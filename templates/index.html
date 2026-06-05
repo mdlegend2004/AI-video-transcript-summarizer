@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>YTSum — AI YouTube Summarizer</title>
+  <meta name="description" content="Instantly turn any YouTube video into a polished, AI-generated summary. Paste a link, pick a style, get insight." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+  <!-- ── Ambient background ── -->
+  <div class="bg-scene" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="grid-overlay"></div>
+    <div class="noise-overlay"></div>
+  </div>
+
+  <!-- ── Header ── -->
+  <header id="site-header">
+    <div class="header-inner">
+      <a class="logo" href="/" aria-label="YTSum home">
+        <div class="logo-gem">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M10 2L17.5 6.5V13.5L10 18L2.5 13.5V6.5L10 2Z" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="logo-wordmark">YT<em>Sum</em></span>
+      </a>
+
+      <nav class="main-nav" role="navigation" aria-label="Main navigation">
+        <button class="nav-pill active" data-tab="summarize" id="nav-summarize">
+          <span class="nav-icon">✦</span> Summarize
+        </button>
+        <button class="nav-pill" data-tab="history" id="nav-history">
+          <span class="nav-icon">◎</span> History
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="main-content">
+
+    <!-- ══════════ Summarize Tab ══════════ -->
+    <section id="tab-summarize" class="tab active" aria-labelledby="nav-summarize">
+
+      <!-- Hero -->
+      <div class="hero" id="hero-block">
+        <div class="hero-badge">
+          <span class="badge-dot"></span>
+          AI-Powered · Free · Instant
+        </div>
+        <h1 class="hero-title">
+          Turn any YouTube video<br />
+          <span class="gradient-text">into pure insight.</span>
+        </h1>
+        <p class="hero-sub">Paste a link. Pick a style. Receive a beautifully crafted summary — from detailed reports to crisp bullet points.</p>
+      </div>
+
+      <!-- Form card -->
+      <div class="glass-card form-card" id="form-card">
+
+        <!-- URL input -->
+        <div class="field" id="field-url">
+          <label for="url-input" class="field-label">YouTube URL</label>
+          <div class="input-row" id="url-input-row">
+            <span class="input-prefix-icon" aria-hidden="true">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+              </svg>
+            </span>
+            <input
+              id="url-input"
+              type="url"
+              placeholder="https://www.youtube.com/watch?v=..."
+              autocomplete="off"
+              spellcheck="false"
+              aria-label="YouTube video URL"
+            />
+          </div>
+        </div>
+
+        <!-- Style selector -->
+        <div class="field" id="field-style">
+          <label class="field-label">Summary Style</label>
+          <div class="style-grid" id="style-grid" role="radiogroup" aria-label="Summary style options">
+            {% for key, style in styles.items() %}
+            <label class="style-chip {% if key == '1' %}selected{% endif %}" for="style-{{ key }}">
+              <input type="radio" id="style-{{ key }}" name="style" value="{{ key }}" {% if key == '1' %}checked{% endif %} />
+              <span class="chip-num">{{ key }}</span>
+              <span class="chip-name">{{ style.label }}</span>
+              <span class="chip-check" aria-hidden="true">✓</span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+
+        <!-- CTA -->
+        <button id="submit-btn" class="btn-cta" aria-label="Generate summary">
+          <span class="cta-glow" aria-hidden="true"></span>
+          <span class="cta-content">
+            <span class="btn-text">Generate Summary</span>
+            <span class="btn-icon-arrow" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="5" y1="12" x2="19" y2="12"/>
+                <polyline points="12 5 19 12 12 19"/>
+              </svg>
+            </span>
+          </span>
+        </button>
+      </div>
+
+      <!-- Progress panel -->
+      <div id="progress-panel" class="glass-card progress-card hidden" aria-live="polite" aria-label="Processing status">
+        <div class="progress-header">
+          <div class="spinner-ring" aria-hidden="true">
+            <svg viewBox="0 0 36 36" class="ring-svg">
+              <circle cx="18" cy="18" r="14" class="ring-track"/>
+              <circle cx="18" cy="18" r="14" class="ring-fill" id="ring-fill-el"/>
+            </svg>
+            <span class="ring-pct" id="ring-pct-text">0%</span>
+          </div>
+          <div class="progress-info">
+            <span id="progress-title" class="progress-label">Starting…</span>
+            <div class="progress-bar-wrap" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" id="progress-bar-wrap">
+              <div id="progress-bar" class="progress-bar"></div>
+            </div>
+          </div>
+        </div>
+        <div id="log-feed" class="log-feed" aria-label="Progress log" role="log"></div>
+      </div>
+
+      <!-- Result panel -->
+      <div id="result-panel" class="glass-card result-card hidden" aria-label="Summary result">
+        <div class="result-header">
+          <div class="result-meta">
+            <h2 id="result-title" class="result-title"></h2>
+            <span id="result-style-badge" class="chip-badge"></span>
+          </div>
+          <div class="result-actions" role="toolbar" aria-label="Result actions">
+            <button id="tts-btn" class="action-btn tts-idle" title="Read summary aloud" aria-label="Read aloud">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            </button>
+            <select id="voice-select" class="voice-picker" title="Choose voice" aria-label="TTS voice">
+              <option value="alloy">Alloy</option>
+              <option value="echo">Echo</option>
+              <option value="fable">Fable</option>
+              <option value="nova" selected>Nova</option>
+              <option value="onyx">Onyx</option>
+              <option value="shimmer">Shimmer</option>
+            </select>
+            <button id="copy-btn" class="action-btn" title="Copy summary" aria-label="Copy to clipboard">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+            </button>
+            <button id="download-btn" class="action-btn" title="Download .txt" aria-label="Download as text file">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
+            <button id="new-btn" class="btn-ghost" aria-label="Start new summary">New Summary</button>
+          </div>
+        </div>
+
+        <!-- TTS player -->
+        <div id="tts-player" class="tts-player hidden" aria-label="Audio player">
+          <audio id="tts-audio" aria-hidden="true"></audio>
+          <div class="tts-controls">
+            <button id="tts-play-pause" class="tts-pp" aria-label="Play or pause audio">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <polygon points="5 3 19 12 5 21 5 3"/>
+              </svg>
+            </button>
+            <div class="tts-track-wrap" id="tts-seek" role="slider" aria-label="Seek audio" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+              <div class="tts-track-bg"></div>
+              <div id="tts-filled" class="tts-track-filled"></div>
+              <div id="tts-thumb" class="tts-thumb"></div>
+            </div>
+            <span id="tts-time" class="tts-timestamp">0:00</span>
+            <button id="tts-stop" class="tts-stop-btn" title="Stop" aria-label="Stop audio">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
+                <rect x="3" y="3" width="18" height="18" rx="2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div id="result-summary" class="summary-body"></div>
+
+        <details class="transcript-block">
+          <summary class="transcript-toggle">View full transcript</summary>
+          <div id="result-transcript" class="transcript-body"></div>
+        </details>
+
+        <div class="result-footer">
+          <span id="result-word-count" class="word-count-chip"></span>
+        </div>
+      </div>
+
+      <!-- Error panel -->
+      <div id="error-panel" class="glass-card error-card hidden" role="alert" aria-live="assertive">
+        <div class="error-inner">
+          <div class="error-icon-wrap" aria-hidden="true">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+          </div>
+          <p id="error-msg" class="error-text"></p>
+          <button id="error-retry-btn" class="btn-ghost">Try Again</button>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══════════ History Tab ══════════ -->
+    <section id="tab-history" class="tab hidden" aria-labelledby="nav-history">
+      <div class="history-header">
+        <h2 class="history-heading">Past Summaries</h2>
+        <button id="refresh-history-btn" class="action-btn" title="Refresh" aria-label="Refresh history">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+      </div>
+      <div id="history-list" class="history-list" role="list" aria-label="Summary history">
+        <div class="history-empty">Loading history…</div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer id="site-footer">
+    <div class="footer-inner">
+      <span class="footer-credit">Built with ❤️ by <strong>Plakshi &amp; Manas</strong></span>
+      <span class="footer-dot" aria-hidden="true">·</span>
+      <span class="footer-tech">Powered by Whisper &amp; GPT-4</span>
+    </div>
+  </footer>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

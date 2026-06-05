@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.pyc
+*.egg
+*.egg-info/
+dist/
+build/
+*.so
+.env
+.venv
+env/
+venv/
+
+# Config with secrets
+config.py
+
+# Summaries (ephemeral)
+summaries/
+
+# Cookies (sensitive)
+*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+.vscode/
+.idea/
