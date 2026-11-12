@@ -71,7 +71,10 @@ SUMMARY_STYLES: dict[str, dict] = {
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _log(msg: str, cb: Callable | None) -> None:
-    print(msg, flush=True)
+    try:
+        print(msg, flush=True)
+    except UnicodeEncodeError:
+        print(msg.encode("ascii", "replace").decode(), flush=True)
     if cb:
         cb(msg)
 

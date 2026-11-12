@@ -1,115 +1,44 @@
-/* app.js — YTSum Premium Frontend */
+/* app.js — frontend logic for YT Summarizer */
+
 (function () {
   'use strict';
 
-  /* ── SVG gradient defs for the ring spinner ──────────────────────────── */
-  const svgDefs = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  svgDefs.setAttribute('class', 'svg-defs');
-  svgDefs.innerHTML = `
-    <defs>
-      <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%"   stop-color="#c9f53b"/>
-        <stop offset="100%" stop-color="#3bdfff"/>
-      </linearGradient>
-    </defs>`;
-  document.body.prepend(svgDefs);
-
-  /* ── Injected keyframes ──────────────────────────────────────────────── */
-  const extraStyles = document.createElement('style');
-  extraStyles.textContent = `
-    @keyframes shake {
-      0%,100% { transform: translateX(0); }
-      20%,60% { transform: translateX(-6px); }
-      40%,80% { transform: translateX(6px); }
-    }
-  `;
-  document.head.appendChild(extraStyles);
-
-  /* ── State ───────────────────────────────────────────────────────────── */
-  let currentJobId  = null;
+  /* ── state ───────────────────────────────────────────────────────────── */
+  let currentJobId = null;
   let currentResult = null;
-  let sseSource     = null;
-  let ttsObjectUrl  = null;
+  let sseSource = null;
+  const PROGRESS_STEPS = ['Downloading', 'Transcribing', 'Summarising', 'Done'];
 
-  /* ── Element refs ────────────────────────────────────────────────────── */
+  /* ── element refs ────────────────────────────────────────────────────── */
   const $ = id => document.getElementById(id);
-
-  const urlInput         = $('url-input');
-  const submitBtn        = $('submit-btn');
-  const progressPanel    = $('progress-panel');
-  const progressTitle    = $('progress-title');
-  const progressBar      = $('progress-bar');
-  const progressBarWrap  = $('progress-bar-wrap');
-  const logFeed          = $('log-feed');
-  const resultPanel      = $('result-panel');
-  const resultTitle      = $('result-title');
-  const resultBadge      = $('result-style-badge');
-  const resultSummary    = $('result-summary');
+  const urlInput       = $('url-input');
+  const submitBtn      = $('submit-btn');
+  const progressPanel  = $('progress-panel');
+  const progressTitle  = $('progress-title');
+  const progressBar    = $('progress-bar');
+  const logFeed        = $('log-feed');
+  const resultPanel    = $('result-panel');
+  const resultTitle    = $('result-title');
+  const resultBadge    = $('result-style-badge');
+  const resultSummary  = $('result-summary');
   const resultTranscript = $('result-transcript');
   const resultWordCount  = $('result-word-count');
-  const errorPanel       = $('error-panel');
-  const errorMsg         = $('error-msg');
-  const copyBtn          = $('copy-btn');
-  const downloadBtn      = $('download-btn');
-  const newBtn           = $('new-btn');
-  const errorRetryBtn    = $('error-retry-btn');
-  const historyList      = $('history-list');
+  const errorPanel     = $('error-panel');
+  const errorMsg       = $('error-msg');
+  const ttsBtn         = $('tts-btn');
+  const copyBtn        = $('copy-btn');
+  const downloadBtn    = $('download-btn');
+  const newBtn         = $('new-btn');
+  const errorRetryBtn  = $('error-retry-btn');
+  const historyList    = $('history-list');
   const refreshHistoryBtn = $('refresh-history-btn');
 
-  // Ring progress
-  const ringFill    = $('ring-fill-el');
-  const ringPctText = $('ring-pct-text');
-  const RING_CIRC   = 88; // 2π × r ≈ 2π × 14 ≈ 87.96
-
-  // TTS
-  const ttsBtn       = $('tts-btn');
-  const voiceSelect  = $('voice-select');
-  const ttsPlayer    = $('tts-player');
-  const ttsAudio     = $('tts-audio');
-  const ttsPlayPause = $('tts-play-pause');
-  const ttsFilled    = $('tts-filled');
-  const ttsThumb     = $('tts-thumb');
-  const ttsSeek      = $('tts-seek');
-  const ttsTime      = $('tts-time');
-  const ttsStop      = $('tts-stop');
-
-
-  /* ════════════════════════════════════════════════════════════════════════
-     3-D CARD TILT
-     ════════════════════════════════════════════════════════════════════════ */
-  function initTilt(card) {
-    const MAX = 8; // max degrees
-
-    card.addEventListener('mousemove', e => {
-      const rect = card.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width  - 0.5;  // -0.5 → 0.5
-      const y = (e.clientY - rect.top)  / rect.height - 0.5;
-      const rotY =  x * MAX;
-      const rotX = -y * MAX;
-      card.classList.add('tilt-active');
-      card.style.transform = `perspective(900px) rotateX(${rotX}deg) rotateY(${rotY}deg) scale3d(1.01,1.01,1.01)`;
-    });
-
-    card.addEventListener('mouseleave', () => {
-      card.classList.remove('tilt-active');
-      card.style.transform = '';
-    });
-  }
-
-  document.querySelectorAll('.glass-card').forEach(initTilt);
-
-
-  /* ════════════════════════════════════════════════════════════════════════
-     TAB NAVIGATION
-     ════════════════════════════════════════════════════════════════════════ */
-  document.querySelectorAll('.nav-pill').forEach(btn => {
+  /* ── tab navigation ──────────────────────────────────────────────────── */
+  document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       const tab = btn.dataset.tab;
-      document.querySelectorAll('.nav-pill').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.tab').forEach(t => {
-        t.classList.remove('active');
-        t.classList.add('hidden');
-      });
+      document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab').forEach(t => { t.classList.remove('active'); t.classList.add('hidden'); });
       btn.classList.add('active');
       const el = document.getElementById('tab-' + tab);
       el.classList.remove('hidden');
@@ -118,22 +47,16 @@
     });
   });
 
-
-  /* ════════════════════════════════════════════════════════════════════════
-     STYLE CHIP SELECTION
-     ════════════════════════════════════════════════════════════════════════ */
-  document.querySelectorAll('.style-chip').forEach(chip => {
-    chip.addEventListener('click', () => {
-      document.querySelectorAll('.style-chip').forEach(c => c.classList.remove('selected'));
-      chip.classList.add('selected');
-      chip.querySelector('input[type="radio"]').checked = true;
+  /* ── style card selection ────────────────────────────────────────────── */
+  document.querySelectorAll('.style-card').forEach(card => {
+    card.addEventListener('click', () => {
+      document.querySelectorAll('.style-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      card.querySelector('input[type="radio"]').checked = true;
     });
   });
 
-
-  /* ════════════════════════════════════════════════════════════════════════
-     SUBMIT
-     ════════════════════════════════════════════════════════════════════════ */
+  /* ── submit ──────────────────────────────────────────────────────────── */
   submitBtn.addEventListener('click', startSummary);
   urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') startSummary(); });
 
@@ -147,6 +70,8 @@
     if (!url) { urlInput.focus(); shake(urlInput.closest('.input-row')); return; }
 
     const styleKey = getSelectedStyle();
+
+    // reset UI
     hideAll();
     showPanel(progressPanel);
     submitBtn.disabled = true;
@@ -156,9 +81,9 @@
 
     try {
       const res = await fetch('/api/summarize', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ url, style_key: styleKey }),
+        body: JSON.stringify({ url, style_key: styleKey }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Server error');
@@ -172,7 +97,8 @@
   function listenToJob(jobId) {
     if (sseSource) { sseSource.onmessage = null; sseSource.onerror = null; sseSource.close(); }
     sseSource = new EventSource('/api/stream/' + jobId);
-    let finished = false;
+    let stepIdx = 0;
+    let finished = false;   // guard: ignore onerror after we finish cleanly
 
     sseSource.onmessage = event => {
       const msg = JSON.parse(event.data);
@@ -180,21 +106,21 @@
       if (msg.type === 'log') {
         appendLog(msg.payload);
         const text = msg.payload.toLowerCase();
-        if (text.includes('download'))              { setProgress(15); progressTitle.textContent = 'Downloading audio…'; }
-        if (text.includes('transcrib'))             { setProgress(45); progressTitle.textContent = 'Transcribing with Whisper…'; }
-        if (text.includes('generat') || text.includes('summar')) { setProgress(80); progressTitle.textContent = 'Generating summary…'; }
-        if (text.includes('captions'))              { setProgress(30); progressTitle.textContent = 'Fetching captions…'; }
+        if (text.includes('download'))   { stepIdx = Math.max(stepIdx, 1); setProgress(15); progressTitle.textContent = 'Downloading audio…'; }
+        if (text.includes('transcrib'))  { stepIdx = Math.max(stepIdx, 2); setProgress(45); progressTitle.textContent = 'Transcribing with Whisper…'; }
+        if (text.includes('generat') || text.includes('summar')) { stepIdx = Math.max(stepIdx, 3); setProgress(80); progressTitle.textContent = 'Generating summary…'; }
+        if (text.includes('transcript ready')) { setProgress(75); }
       }
 
       if (msg.type === 'done') {
         finished = true;
         setProgress(100);
-        progressTitle.textContent = 'Done! ✦';
+        progressTitle.textContent = 'Done!';
         currentResult = msg.payload;
         sseSource.onmessage = null;
         sseSource.onerror   = null;
         sseSource.close();
-        setTimeout(() => showResult(msg.payload), 500);
+        setTimeout(() => showResult(msg.payload), 400);
       }
 
       if (msg.type === 'error') {
@@ -207,16 +133,18 @@
     };
 
     sseSource.onerror = () => {
-      if (finished) return;
+      if (finished) return;          // normal close after done/error — ignore
       finished = true;
       sseSource.onmessage = null;
       sseSource.onerror   = null;
       sseSource.close();
+      // Try polling the job status as fallback
       pollJobFallback(jobId);
     };
   }
 
   async function pollJobFallback(jobId) {
+    // SSE dropped mid-stream — poll once to see if job actually finished
     try {
       const res  = await fetch('/api/job/' + jobId);
       const data = await res.json();
@@ -233,26 +161,14 @@
     }
   }
 
-
-  /* ════════════════════════════════════════════════════════════════════════
-     UI HELPERS
-     ════════════════════════════════════════════════════════════════════════ */
+  /* ── UI helpers ──────────────────────────────────────────────────────── */
   function hideAll() {
     [progressPanel, resultPanel, errorPanel].forEach(p => p.classList.add('hidden'));
   }
   function showPanel(el) { el.classList.remove('hidden'); }
 
   function setProgress(pct) {
-    // Linear bar
     progressBar.style.width = pct + '%';
-    if (progressBarWrap) progressBarWrap.setAttribute('aria-valuenow', pct);
-
-    // Ring indicator
-    if (ringFill) {
-      const offset = RING_CIRC - (pct / 100) * RING_CIRC;
-      ringFill.style.strokeDashoffset = offset;
-    }
-    if (ringPctText) ringPctText.textContent = Math.round(pct) + '%';
   }
 
   function appendLog(text) {
@@ -267,18 +183,14 @@
   }
 
   function showResult(data) {
-    hideAll();
     stopTTS();
+    hideAll();
     submitBtn.disabled = false;
-    resultTitle.textContent      = data.title || 'Summary';
-    resultBadge.textContent      = data.style_label || '';
-    resultSummary.textContent    = data.summary || '';
+    resultTitle.textContent  = data.title || 'Summary';
+    resultBadge.textContent  = data.style_label || '';
+    resultSummary.textContent = data.summary || '';
     resultTranscript.textContent = data.transcript || '';
     resultWordCount.textContent  = `${(data.transcript_word_count || 0).toLocaleString()} words transcribed`;
-    // Reset TTS button
-    ttsBtn.innerHTML   = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-    ttsBtn.className   = 'action-btn tts-idle';
-    ttsBtn.disabled    = false;
     showPanel(resultPanel);
     resultPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -293,20 +205,47 @@
   function shake(el) {
     el.style.animation = 'none';
     void el.offsetWidth;
-    el.style.animation = 'shake 0.35s ease';
+    el.style.animation = 'shake 0.3s ease';
     el.addEventListener('animationend', () => { el.style.animation = ''; }, { once: true });
   }
 
+  /* ── TTS ─────────────────────────────────────────────────────────────── */
+  let ttsActive = false;
 
-  /* ════════════════════════════════════════════════════════════════════════
-     RESULT ACTIONS
-     ════════════════════════════════════════════════════════════════════════ */
+  ttsBtn.addEventListener('click', () => {
+    if (!currentResult) return;
+    ttsActive ? stopTTS() : startTTS(currentResult.summary);
+  });
+
+  function startTTS(text) {
+    if (!window.speechSynthesis) return;
+    stopTTS();
+    const utter = new SpeechSynthesisUtterance(text);
+    utter.rate  = 1;
+    utter.onend   = () => setTTSState(false);
+    utter.onerror = () => setTTSState(false);
+    window.speechSynthesis.speak(utter);
+    setTTSState(true);
+  }
+
+  function stopTTS() {
+    if (window.speechSynthesis) window.speechSynthesis.cancel();
+    setTTSState(false);
+  }
+
+  function setTTSState(playing) {
+    ttsActive = playing;
+    ttsBtn.textContent = playing ? '⏹' : '▶';
+    ttsBtn.title       = playing ? 'Stop reading' : 'Read summary aloud';
+    ttsBtn.classList.toggle('tts-playing', playing);
+  }
+
+  /* ── result actions ──────────────────────────────────────────────────── */
   copyBtn.addEventListener('click', () => {
     if (!currentResult) return;
     navigator.clipboard.writeText(currentResult.summary).then(() => {
-      const orig = copyBtn.innerHTML;
-      copyBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4afa9a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-      setTimeout(() => { copyBtn.innerHTML = orig; }, 1600);
+      copyBtn.textContent = '✅';
+      setTimeout(() => { copyBtn.textContent = '📋'; }, 1500);
     });
   });
 
@@ -329,136 +268,15 @@
   function resetUI() {
     stopTTS();
     hideAll();
-    submitBtn.disabled = false;
-    urlInput.value     = '';
-    currentResult      = null;
-    currentJobId       = null;
+    submitBtn.disabled   = false;
+    urlInput.value       = '';
+    currentResult        = null;
+    currentJobId         = null;
     if (sseSource) { sseSource.close(); sseSource = null; }
     urlInput.focus();
   }
 
-
-  /* ════════════════════════════════════════════════════════════════════════
-     TTS
-     ════════════════════════════════════════════════════════════════════════ */
-  const PLAY_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
-  const PAUSE_ICON = `<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
-
-  ttsBtn.addEventListener('click', async () => {
-    if (!currentResult) return;
-
-    // Toggle if already loaded
-    if (ttsAudio.src && ttsAudio.readyState >= 2) {
-      togglePlayPause();
-      return;
-    }
-
-    const text  = currentResult.summary;
-    const voice = voiceSelect.value;
-
-    // Loading state
-    ttsBtn.innerHTML = '↻';
-    ttsBtn.className = 'action-btn tts-loading';
-    ttsBtn.disabled  = true;
-    ttsPlayer.classList.add('hidden');
-
-    try {
-      const res = await fetch('/api/tts', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text, voice }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'TTS request failed' }));
-        throw new Error(err.error || 'TTS failed');
-      }
-
-      const blob = await res.blob();
-      if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
-      ttsObjectUrl = URL.createObjectURL(blob);
-
-      ttsAudio.src         = ttsObjectUrl;
-      ttsAudio.currentTime = 0;
-      await ttsAudio.play();
-
-      ttsPlayer.classList.remove('hidden');
-      ttsPlayPause.innerHTML   = PAUSE_ICON;
-      ttsBtn.innerHTML         = PAUSE_ICON;
-      ttsBtn.className         = 'action-btn tts-playing';
-      ttsBtn.disabled          = false;
-
-    } catch (err) {
-      ttsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-      ttsBtn.className = 'action-btn tts-idle';
-      ttsBtn.disabled  = false;
-      alert('TTS error: ' + err.message);
-    }
-  });
-
-  ttsPlayPause.addEventListener('click', togglePlayPause);
-
-  function togglePlayPause() {
-    if (ttsAudio.paused) {
-      ttsAudio.play();
-      ttsPlayPause.innerHTML = PAUSE_ICON;
-      ttsBtn.innerHTML       = PAUSE_ICON;
-      ttsBtn.className       = 'action-btn tts-playing';
-    } else {
-      ttsAudio.pause();
-      ttsPlayPause.innerHTML = PLAY_ICON;
-      ttsBtn.innerHTML       = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-      ttsBtn.className       = 'action-btn tts-idle';
-    }
-  }
-
-  ttsStop.addEventListener('click', stopTTS);
-
-  function stopTTS() {
-    ttsAudio.pause();
-    ttsAudio.src              = '';
-    ttsFilled.style.width     = '0%';
-    if (ttsThumb) ttsThumb.style.left = '0%';
-    ttsTime.textContent       = '0:00';
-    ttsPlayPause.innerHTML    = PLAY_ICON;
-    ttsBtn.innerHTML          = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-    ttsBtn.className          = 'action-btn tts-idle';
-    ttsBtn.disabled           = false;
-    ttsPlayer.classList.add('hidden');
-    if (ttsObjectUrl) { URL.revokeObjectURL(ttsObjectUrl); ttsObjectUrl = null; }
-  }
-
-  ttsAudio.addEventListener('timeupdate', () => {
-    if (!ttsAudio.duration) return;
-    const pct = (ttsAudio.currentTime / ttsAudio.duration) * 100;
-    ttsFilled.style.width = pct + '%';
-    if (ttsThumb) ttsThumb.style.left = pct + '%';
-    if (ttsSeek)  ttsSeek.setAttribute('aria-valuenow', Math.round(pct));
-    ttsTime.textContent = fmtSec(ttsAudio.currentTime) + ' / ' + fmtSec(ttsAudio.duration);
-  });
-
-  ttsAudio.addEventListener('ended', () => {
-    ttsFilled.style.width  = '100%';
-    if (ttsThumb) ttsThumb.style.left = '100%';
-    ttsPlayPause.innerHTML = PLAY_ICON;
-    ttsBtn.innerHTML       = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
-    ttsBtn.className       = 'action-btn tts-idle';
-  });
-
-  ttsSeek.addEventListener('click', e => {
-    if (!ttsAudio.duration) return;
-    const rect = ttsSeek.getBoundingClientRect();
-    ttsAudio.currentTime = ((e.clientX - rect.left) / rect.width) * ttsAudio.duration;
-  });
-
-  function fmtSec(s) {
-    const m = Math.floor(s / 60);
-    return m + ':' + Math.floor(s % 60).toString().padStart(2, '0');
-  }
-
-
-  /* ════════════════════════════════════════════════════════════════════════
-     HISTORY
-     ════════════════════════════════════════════════════════════════════════ */
+  /* ── history ─────────────────────────────────────────────────────────── */
   refreshHistoryBtn.addEventListener('click', loadHistory);
 
   async function loadHistory() {
@@ -473,16 +291,15 @@
       historyList.innerHTML = '';
       data.forEach((item, i) => {
         const el = document.createElement('div');
-        el.className  = 'history-item';
-        el.setAttribute('role', 'listitem');
-        el.style.animationDelay = (i * 0.06) + 's';
+        el.className = 'history-item';
+        el.style.animationDelay = (i * 0.05) + 's';
         el.innerHTML = `
           <div class="history-thumb">📺</div>
           <div class="history-info">
             <div class="history-title">${esc(item.title)}</div>
             <div class="history-meta">${esc(item.style_label)} · ${item.word_count?.toLocaleString() || '?'} words · ${formatDate(item.saved_at)}</div>
           </div>
-          <span class="history-arrow" aria-hidden="true">→</span>
+          <span class="history-arrow">→</span>
         `;
         el.addEventListener('click', () => openHistoryItem(item.file));
         historyList.appendChild(el);
@@ -506,29 +323,23 @@
     const overlay = document.createElement('div');
     overlay.className = 'modal-overlay';
     overlay.innerHTML = `
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
+      <div class="modal">
         <div class="modal-header">
           <div>
-            <div class="modal-title" id="modal-heading">${esc(data.title || 'Summary')}</div>
-            <span class="chip-badge" style="margin-top:6px;display:inline-flex">${esc(data.style_label || '')}</span>
+            <div class="modal-title">${esc(data.title || 'Summary')}</div>
+            <span class="badge" style="margin-top:4px;display:inline-block">${esc(data.style_label || '')}</span>
           </div>
-          <button class="modal-close" title="Close" aria-label="Close modal">✕</button>
+          <button class="modal-close" title="Close">✕</button>
         </div>
         <div class="modal-body">${esc(data.summary || '')}</div>
       </div>
     `;
     overlay.querySelector('.modal-close').addEventListener('click', () => overlay.remove());
     overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-    document.addEventListener('keydown', function onEsc(e) {
-      if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onEsc); }
-    });
     document.body.appendChild(overlay);
   }
 
-
-  /* ════════════════════════════════════════════════════════════════════════
-     UTILS
-     ════════════════════════════════════════════════════════════════════════ */
+  /* ── utils ───────────────────────────────────────────────────────────── */
   function esc(str) {
     return String(str)
       .replace(/&/g,'&amp;').replace(/</g,'&lt;')
@@ -543,4 +354,14 @@
     } catch { return str; }
   }
 
+  /* ── shake keyframe (injected) ───────────────────────────────────────── */
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      25%      { transform: translateX(-6px); }
+      75%      { transform: translateX(6px); }
+    }
+  `;
+  document.head.appendChild(style);
 })();

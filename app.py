@@ -12,41 +12,33 @@ import threading
 import uuid
 from datetime import datetime
 from pathlib import Path
-from openai import OpenAI
-from summarizer_core import SUMMARY_STYLES, summarize_youtube_url
+
 from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 
-# Load from environment variables (for Render/cloud) or fall back to config.py (local dev)
-OPENAI_API_KEY          = os.getenv("OPENAI_API_KEY", "")
-YTDLP_COOKIES_FILE      = os.getenv("YTDLP_COOKIES_FILE", "")
-YTDLP_COOKIES_FROM_BROWSER = os.getenv("YTDLP_COOKIES_FROM_BROWSER", "")
-FLASK_HOST              = os.getenv("FLASK_HOST", "0.0.0.0")
-FLASK_PORT              = int(os.getenv("PORT", os.getenv("FLASK_PORT", "5000")))
-FLASK_DEBUG             = os.getenv("FLASK_DEBUG", "false").lower() == "true"
-SECRET_KEY              = os.getenv("SECRET_KEY", "change-me-in-production")
-
-# Optional: also load from config.py when running locally
 try:
     from config import (
-        OPENAI_API_KEY as _cfg_key,
-        FLASK_DEBUG as _cfg_debug,
-        FLASK_HOST as _cfg_host,
-        FLASK_PORT as _cfg_port,
-        SECRET_KEY as _cfg_secret,
+        OPENAI_API_KEY,
+        FLASK_DEBUG,
+        FLASK_HOST,
+        FLASK_PORT,
+        SECRET_KEY,
     )
-    # Only use config.py values if env vars are not set
-    if not OPENAI_API_KEY:
-        OPENAI_API_KEY = _cfg_key
-    if not os.getenv("SECRET_KEY"):
-        SECRET_KEY = _cfg_secret
     try:
-        from config import YTDLP_COOKIES_FILE as _cfg_cookies
-        if not YTDLP_COOKIES_FILE:
-            YTDLP_COOKIES_FILE = _cfg_cookies
+        from config import YTDLP_COOKIES_FILE
     except ImportError:
-        pass
+        YTDLP_COOKIES_FILE = ""
+    try:
+        from config import YTDLP_COOKIES_FROM_BROWSER
+    except ImportError:
+        YTDLP_COOKIES_FROM_BROWSER = ""
 except ImportError:
-    pass
+    OPENAI_API_KEY          = os.getenv("OPENAI_API_KEY", "")
+    YTDLP_COOKIES_FILE      = ""
+    YTDLP_COOKIES_FROM_BROWSER = ""
+    FLASK_HOST              = "0.0.0.0"
+    FLASK_PORT              = 5000
+    FLASK_DEBUG             = False
+    SECRET_KEY              = "dev-secret"
 
 from summarizer_core import SUMMARY_STYLES, summarize_youtube_url
 
@@ -206,49 +198,6 @@ def api_history_detail(filename: str):
     with open(fpath, encoding="utf-8") as f:
         return jsonify(json.load(f))
 
-
-
-
-@app.route("/api/tts", methods=["POST"])
-def api_tts():
-    """Convert summary text to speech using OpenAI TTS and stream the audio."""
-    data  = request.get_json(force=True)
-    text  = (data.get("text") or "").strip()
-    voice = (data.get("voice") or "alloy").strip()
-
-    if not text:
-        return jsonify({"error": "No text provided"}), 400
-    if not OPENAI_API_KEY:
-        return jsonify({"error": "No OpenAI API key configured"}), 500
-
-    allowed_voices = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
-    if voice not in allowed_voices:
-        voice = "alloy"
-
-    # OpenAI TTS supports max ~4096 chars per call; truncate gracefully
-    if len(text) > 4000:
-        text = text[:4000].rsplit(" ", 1)[0] + "…"
-
-    try:
-        client   = OpenAI(api_key=OPENAI_API_KEY)
-        response = client.audio.speech.create(
-            model="tts-1",
-            voice=voice,
-            input=text,
-            response_format="mp3",
-        )
-        audio_bytes = response.content
-        return Response(
-            audio_bytes,
-            mimetype="audio/mpeg",
-            headers={
-                "Content-Disposition": "inline; filename=summary.mp3",
-                "Content-Length": str(len(audio_bytes)),
-                "Cache-Control": "no-store",
-            },
-        )
-    except Exception as exc:
-        return jsonify({"error": str(exc)}), 500
 
 # ── main ──────────────────────────────────────────────────────────────────────
 
